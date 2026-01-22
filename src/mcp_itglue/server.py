@@ -5,16 +5,27 @@ from mcp.server.fastmcp import FastMCP
 from .client import get_client
 from .config import get_settings, logger
 from .tools import (
+    register_checklist_tools,
     register_configuration_tools,
     register_contact_tools,
+    register_document_tools,
+    register_domain_tools,
+    register_flexible_asset_tools,
+    register_location_tools,
     register_organization_tools,
     register_password_tools,
+    register_reference_data_tools,
+    register_related_item_tools,
 )
 
 # Initialize FastMCP server
 mcp = FastMCP(
     "IT Glue",
-    description="MCP server for IT Glue API - manage organizations, configurations, passwords, and contacts",
+    description=(
+        "MCP server for IT Glue API - comprehensive IT documentation management "
+        "including organizations, configurations, passwords, contacts, flexible assets, "
+        "checklists, documents, locations, domains, and relationships"
+    ),
 )
 
 
@@ -24,10 +35,24 @@ def register_all_tools() -> None:
 
     logger.info("Registering IT Glue MCP tools...")
 
+    # Core entities
     register_organization_tools(mcp, client)
     register_configuration_tools(mcp, client)
     register_password_tools(mcp, client)
     register_contact_tools(mcp, client)
+
+    # Extended entities
+    register_flexible_asset_tools(mcp, client)
+    register_checklist_tools(mcp, client)
+    register_document_tools(mcp, client)
+    register_location_tools(mcp, client)
+    register_domain_tools(mcp, client)
+
+    # Relationships
+    register_related_item_tools(mcp, client)
+
+    # Reference data (lookup tables)
+    register_reference_data_tools(mcp, client)
 
     logger.info("All IT Glue MCP tools registered successfully")
 
