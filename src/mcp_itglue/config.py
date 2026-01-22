@@ -3,8 +3,12 @@
 import logging
 import sys
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Find project root (where .env file should be)
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -12,7 +16,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="ITGLUE_",
-        env_file=".env",
+        env_file=str(PROJECT_ROOT / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
