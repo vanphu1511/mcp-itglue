@@ -6,6 +6,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ..client import ITGlueClient, get_client
+from .output import format_list_output, format_search_output
 
 
 def _format_contact(contact: dict[str, Any]) -> dict[str, Any]:
@@ -50,6 +51,8 @@ def register_contact_tools(mcp: FastMCP, client: ITGlueClient | None = None) -> 
         important: bool | None = None,
         page: int = 1,
         page_size: int = 50,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """List contacts from IT Glue.
 
@@ -62,6 +65,8 @@ def register_contact_tools(mcp: FastMCP, client: ITGlueClient | None = None) -> 
             important: Filter by important flag
             page: Page number (starts at 1)
             page_size: Number of results per page (max 1000)
+            output_format: Output format - "full" (all fields), "compact" (key fields only), or "summary" (counts and IDs only). Default: compact
+            save_to_file: If True, saves full results to a temp file and returns the path for jq processing
 
         Returns:
             JSON string with list of contacts
@@ -94,14 +99,18 @@ def register_contact_tools(mcp: FastMCP, client: ITGlueClient | None = None) -> 
         contacts = response.get("data", [])
         meta = response.get("meta", {})
 
-        result = {
-            "contacts": [_format_contact(c) for c in contacts],
-            "total_count": meta.get("total-count", len(contacts)),
-            "page": page,
-            "page_size": page_size,
-        }
-
-        return json.dumps(result, indent=2)
+        return format_list_output(
+            items=[_format_contact(c) for c in contacts],
+            entity_type="contact",
+            list_key="contacts",
+            output_format=output_format,
+            save_to_file=save_to_file,
+            extra_fields={
+                "total_count": meta.get("total-count", len(contacts)),
+                "page": page,
+                "page_size": page_size,
+            },
+        )
 
     @mcp.tool()
     async def get_contact(contact_id: int) -> str:
@@ -123,6 +132,8 @@ def register_contact_tools(mcp: FastMCP, client: ITGlueClient | None = None) -> 
         query: str,
         organization_id: int | None = None,
         limit: int = 10,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """Search for contacts by name.
 
@@ -130,6 +141,8 @@ def register_contact_tools(mcp: FastMCP, client: ITGlueClient | None = None) -> 
             query: Search query string (searches first and last name)
             organization_id: Optional organization ID to limit search
             limit: Maximum number of results (default 10, max 100)
+            output_format: Output format - "full", "compact" (default), or "summary"
+            save_to_file: If True, saves full results to a temp file for jq processing
 
         Returns:
             JSON string with matching contacts
@@ -147,13 +160,14 @@ def register_contact_tools(mcp: FastMCP, client: ITGlueClient | None = None) -> 
         response = await client.get("/contacts", params)
         contacts = response.get("data", [])
 
-        result = {
-            "query": query,
-            "contacts": [_format_contact(c) for c in contacts],
-            "count": len(contacts),
-        }
-
-        return json.dumps(result, indent=2)
+        return format_search_output(
+            items=[_format_contact(c) for c in contacts],
+            entity_type="contact",
+            list_key="contacts",
+            query=query,
+            output_format=output_format,
+            save_to_file=save_to_file,
+        )
 
     @mcp.tool()
     async def create_contact(

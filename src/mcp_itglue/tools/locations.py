@@ -10,6 +10,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ..client import ITGlueClient, get_client
+from .output import format_list_output, format_search_output
 
 
 def _format_location(location: dict[str, Any]) -> dict[str, Any]:
@@ -53,6 +54,8 @@ def register_location_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
         primary: bool | None = None,
         page: int = 1,
         page_size: int = 50,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """List locations from IT Glue.
 
@@ -65,6 +68,8 @@ def register_location_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
             primary: Filter by primary location status
             page: Page number (starts at 1)
             page_size: Number of results per page (max 1000)
+            output_format: Output format - "full" (all fields), "compact" (key fields only), or "summary" (counts and IDs only). Default: compact
+            save_to_file: If True, saves full results to a temp file and returns the path for jq processing
 
         Returns:
             JSON string with list of locations
@@ -97,14 +102,18 @@ def register_location_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
         locations = response.get("data", [])
         meta = response.get("meta", {})
 
-        result = {
-            "locations": [_format_location(loc) for loc in locations],
-            "total_count": meta.get("total-count", len(locations)),
-            "page": page,
-            "page_size": page_size,
-        }
-
-        return json.dumps(result, indent=2)
+        return format_list_output(
+            items=[_format_location(loc) for loc in locations],
+            entity_type="location",
+            list_key="locations",
+            output_format=output_format,
+            save_to_file=save_to_file,
+            extra_fields={
+                "total_count": meta.get("total-count", len(locations)),
+                "page": page,
+                "page_size": page_size,
+            },
+        )
 
     @mcp.tool()
     async def get_location(location_id: int) -> str:
@@ -126,6 +135,8 @@ def register_location_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
         query: str,
         organization_id: int | None = None,
         limit: int = 10,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """Search for locations by name.
 
@@ -133,6 +144,8 @@ def register_location_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
             query: Search query string
             organization_id: Optional organization filter
             limit: Maximum number of results (default 10, max 100)
+            output_format: Output format - "full", "compact" (default), or "summary"
+            save_to_file: If True, saves full results to a temp file for jq processing
 
         Returns:
             JSON string with matching locations
@@ -148,13 +161,14 @@ def register_location_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
         response = await client.get("/locations", params)
         locations = response.get("data", [])
 
-        result = {
-            "query": query,
-            "locations": [_format_location(loc) for loc in locations],
-            "count": len(locations),
-        }
-
-        return json.dumps(result, indent=2)
+        return format_search_output(
+            items=[_format_location(loc) for loc in locations],
+            entity_type="location",
+            list_key="locations",
+            query=query,
+            output_format=output_format,
+            save_to_file=save_to_file,
+        )
 
     @mcp.tool()
     async def create_location(
@@ -323,6 +337,8 @@ def register_location_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
         organization_id: int,
         page: int = 1,
         page_size: int = 50,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """Get all locations for a specific organization.
 
@@ -330,6 +346,8 @@ def register_location_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
             organization_id: The organization ID
             page: Page number (starts at 1)
             page_size: Number of results per page (max 1000)
+            output_format: Output format - "full" (all fields), "compact" (key fields only), or "summary" (counts and IDs only). Default: compact
+            save_to_file: If True, saves full results to a temp file and returns the path for jq processing
 
         Returns:
             JSON string with the organization's locations
@@ -345,12 +363,16 @@ def register_location_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
         locations = response.get("data", [])
         meta = response.get("meta", {})
 
-        result = {
-            "organization_id": organization_id,
-            "locations": [_format_location(loc) for loc in locations],
-            "total_count": meta.get("total-count", len(locations)),
-            "page": page,
-            "page_size": page_size,
-        }
-
-        return json.dumps(result, indent=2)
+        return format_list_output(
+            items=[_format_location(loc) for loc in locations],
+            entity_type="location",
+            list_key="locations",
+            output_format=output_format,
+            save_to_file=save_to_file,
+            extra_fields={
+                "organization_id": organization_id,
+                "total_count": meta.get("total-count", len(locations)),
+                "page": page,
+                "page_size": page_size,
+            },
+        )

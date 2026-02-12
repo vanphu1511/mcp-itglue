@@ -6,6 +6,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ..client import ITGlueClient, get_client
+from .output import format_list_output, format_search_output
 
 
 def _format_organization(org: dict[str, Any]) -> dict[str, Any]:
@@ -41,6 +42,8 @@ def register_organization_tools(mcp: FastMCP, client: ITGlueClient | None = None
         organization_status_id: int | None = None,
         page: int = 1,
         page_size: int = 50,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """List organizations from IT Glue.
 
@@ -50,6 +53,8 @@ def register_organization_tools(mcp: FastMCP, client: ITGlueClient | None = None
             organization_status_id: Filter by organization status ID
             page: Page number (starts at 1)
             page_size: Number of results per page (max 1000)
+            output_format: Output format - "full" (all fields), "compact" (key fields only), or "summary" (counts and IDs only). Default: compact
+            save_to_file: If True, saves full results to a temp file and returns the path for jq processing
 
         Returns:
             JSON string with list of organizations
@@ -70,14 +75,18 @@ def register_organization_tools(mcp: FastMCP, client: ITGlueClient | None = None
         organizations = response.get("data", [])
         meta = response.get("meta", {})
 
-        result = {
-            "organizations": [_format_organization(org) for org in organizations],
-            "total_count": meta.get("total-count", len(organizations)),
-            "page": page,
-            "page_size": page_size,
-        }
-
-        return json.dumps(result, indent=2)
+        return format_list_output(
+            items=[_format_organization(org) for org in organizations],
+            entity_type="organization",
+            list_key="organizations",
+            output_format=output_format,
+            save_to_file=save_to_file,
+            extra_fields={
+                "total_count": meta.get("total-count", len(organizations)),
+                "page": page,
+                "page_size": page_size,
+            },
+        )
 
     @mcp.tool()
     async def get_organization(organization_id: int) -> str:
@@ -95,12 +104,19 @@ def register_organization_tools(mcp: FastMCP, client: ITGlueClient | None = None
         return json.dumps(_format_organization(org), indent=2)
 
     @mcp.tool()
-    async def search_organizations(query: str, limit: int = 10) -> str:
+    async def search_organizations(
+        query: str,
+        limit: int = 10,
+        output_format: str = "compact",
+        save_to_file: bool = False,
+    ) -> str:
         """Search for organizations by name.
 
         Args:
             query: Search query string
             limit: Maximum number of results (default 10, max 100)
+            output_format: Output format - "full", "compact" (default), or "summary"
+            save_to_file: If True, saves full results to a temp file for jq processing
 
         Returns:
             JSON string with matching organizations
@@ -113,13 +129,14 @@ def register_organization_tools(mcp: FastMCP, client: ITGlueClient | None = None
         response = await client.get("/organizations", params)
         organizations = response.get("data", [])
 
-        result = {
-            "query": query,
-            "organizations": [_format_organization(org) for org in organizations],
-            "count": len(organizations),
-        }
-
-        return json.dumps(result, indent=2)
+        return format_search_output(
+            items=[_format_organization(org) for org in organizations],
+            entity_type="organization",
+            list_key="organizations",
+            query=query,
+            output_format=output_format,
+            save_to_file=save_to_file,
+        )
 
     @mcp.tool()
     async def create_organization(

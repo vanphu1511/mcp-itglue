@@ -6,6 +6,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ..client import ITGlueClient, get_client
+from .output import format_list_output, format_search_output
 
 
 def _format_password(password: dict[str, Any], include_password: bool = False) -> dict[str, Any]:
@@ -26,6 +27,7 @@ def _format_password(password: dict[str, Any], include_password: bool = False) -
         "password_folder": attrs.get("password-folder-id"),
         "resource_type": attrs.get("resource-type"),
         "resource_id": attrs.get("resource-id"),
+        "otp_enabled": attrs.get("otp-enabled", False),
         "notes": attrs.get("notes"),
         "created_at": attrs.get("created-at"),
         "updated_at": attrs.get("updated-at"),
@@ -33,6 +35,9 @@ def _format_password(password: dict[str, Any], include_password: bool = False) -
 
     if include_password:
         result["password"] = attrs.get("password")
+        # Include OTP secret only when showing password (requires same permission level)
+        if attrs.get("otp-secret"):
+            result["otp_secret"] = attrs.get("otp-secret")
 
     return result
 
@@ -54,6 +59,8 @@ def register_password_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
         url: str | None = None,
         page: int = 1,
         page_size: int = 50,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """List passwords from IT Glue (without password values).
 
@@ -64,6 +71,8 @@ def register_password_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
             url: Filter by URL
             page: Page number (starts at 1)
             page_size: Number of results per page (max 1000)
+            output_format: Output format - "full" (all fields), "compact" (key fields only), or "summary" (counts and IDs only). Default: compact
+            save_to_file: If True, saves full results to a temp file and returns the path for jq processing
 
         Returns:
             JSON string with list of passwords (password values not included)
@@ -92,15 +101,19 @@ def register_password_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
         passwords = response.get("data", [])
         meta = response.get("meta", {})
 
-        result = {
-            "passwords": [_format_password(p, include_password=False) for p in passwords],
-            "total_count": meta.get("total-count", len(passwords)),
-            "page": page,
-            "page_size": page_size,
-            "note": "Password values are not included. Use get_password to retrieve a specific password.",
-        }
-
-        return json.dumps(result, indent=2)
+        return format_list_output(
+            items=[_format_password(p, include_password=False) for p in passwords],
+            entity_type="password",
+            list_key="passwords",
+            output_format=output_format,
+            save_to_file=save_to_file,
+            extra_fields={
+                "total_count": meta.get("total-count", len(passwords)),
+                "page": page,
+                "page_size": page_size,
+                "note": "Password values are not included. Use get_password to retrieve a specific password.",
+            },
+        )
 
     @mcp.tool()
     async def get_password(password_id: int, show_password: bool = False) -> str:
@@ -127,6 +140,8 @@ def register_password_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
         query: str,
         organization_id: int | None = None,
         limit: int = 10,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """Search for passwords by name.
 
@@ -134,6 +149,8 @@ def register_password_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
             query: Search query string
             organization_id: Optional organization ID to limit search
             limit: Maximum number of results (default 10, max 100)
+            output_format: Output format - "full", "compact" (default), or "summary"
+            save_to_file: If True, saves full results to a temp file for jq processing
 
         Returns:
             JSON string with matching passwords (password values not included)
@@ -149,14 +166,17 @@ def register_password_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
         response = await client.get("/passwords", params)
         passwords = response.get("data", [])
 
-        result = {
-            "query": query,
-            "passwords": [_format_password(p, include_password=False) for p in passwords],
-            "count": len(passwords),
-            "note": "Password values are not included. Use get_password to retrieve a specific password.",
-        }
-
-        return json.dumps(result, indent=2)
+        return format_search_output(
+            items=[_format_password(p, include_password=False) for p in passwords],
+            entity_type="password",
+            list_key="passwords",
+            query=query,
+            output_format=output_format,
+            save_to_file=save_to_file,
+            extra_fields={
+                "note": "Password values are not included. Use get_password to retrieve a specific password.",
+            },
+        )
 
     @mcp.tool()
     async def create_password(
@@ -170,6 +190,7 @@ def register_password_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
         notes: str | None = None,
         resource_type: str | None = None,
         resource_id: int | None = None,
+        otp_secret: str | None = None,
     ) -> str:
         """Create a new password entry in IT Glue.
 
@@ -184,6 +205,7 @@ def register_password_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
             notes: Additional notes
             resource_type: Related resource type (e.g., 'Configuration')
             resource_id: Related resource ID
+            otp_secret: TOTP secret key (Base32 encoded, min 16 chars) for 2FA
 
         Returns:
             JSON string with the created password entry (password value not included)
@@ -208,6 +230,8 @@ def register_password_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
             attributes["resource-type"] = resource_type
         if resource_id:
             attributes["resource-id"] = resource_id
+        if otp_secret:
+            attributes["otp-secret"] = otp_secret
 
         data = {
             "data": {
@@ -231,6 +255,7 @@ def register_password_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
         password_category_id: int | None = None,
         password_folder_id: int | None = None,
         notes: str | None = None,
+        otp_secret: str | None = None,
     ) -> str:
         """Update an existing password entry in IT Glue.
 
@@ -243,6 +268,7 @@ def register_password_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
             password_category_id: New password category ID
             password_folder_id: New password folder ID
             notes: New notes
+            otp_secret: TOTP secret key (Base32 encoded, min 16 chars) for 2FA
 
         Returns:
             JSON string with the updated password entry (password value not included)
@@ -263,6 +289,8 @@ def register_password_tools(mcp: FastMCP, client: ITGlueClient | None = None) ->
             attributes["password-folder-id"] = password_folder_id
         if notes is not None:
             attributes["notes"] = notes
+        if otp_secret is not None:
+            attributes["otp-secret"] = otp_secret
 
         if not attributes:
             return json.dumps({"error": "No attributes provided to update"})

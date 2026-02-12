@@ -1,9 +1,9 @@
 """IT Glue MCP tools package."""
 
-from .checklists import register_checklist_tools
+from .checklists import register_checklist_tools, register_jwt_checklist_tools
 from .configurations import register_configuration_tools
 from .contacts import register_contact_tools
-from .documents import register_document_tools
+from .documents import register_document_tools, register_jwt_document_tools
 from .domains import register_domain_tools
 from .flexible_assets import register_flexible_asset_tools
 from .locations import register_location_tools
@@ -21,7 +21,9 @@ __all__ = [
     # Extended entities
     "register_flexible_asset_tools",
     "register_checklist_tools",
+    "register_jwt_checklist_tools",
     "register_document_tools",
+    "register_jwt_document_tools",
     "register_location_tools",
     "register_domain_tools",
     # Relationships

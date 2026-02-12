@@ -6,6 +6,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ..client import ITGlueClient, get_client
+from .output import format_list_output, format_search_output
 
 
 def _format_configuration(config: dict[str, Any]) -> dict[str, Any]:
@@ -55,6 +56,8 @@ def register_configuration_tools(mcp: FastMCP, client: ITGlueClient | None = Non
         configuration_status_id: int | None = None,
         page: int = 1,
         page_size: int = 50,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """List configurations (devices/assets) from IT Glue.
 
@@ -68,6 +71,8 @@ def register_configuration_tools(mcp: FastMCP, client: ITGlueClient | None = Non
             configuration_status_id: Filter by configuration status ID
             page: Page number (starts at 1)
             page_size: Number of results per page (max 1000)
+            output_format: Output format - "full" (all fields), "compact" (key fields only), or "summary" (counts and IDs only). Default: compact
+            save_to_file: If True, saves full results to a temp file and returns the path for jq processing
 
         Returns:
             JSON string with list of configurations
@@ -102,14 +107,18 @@ def register_configuration_tools(mcp: FastMCP, client: ITGlueClient | None = Non
         configurations = response.get("data", [])
         meta = response.get("meta", {})
 
-        result = {
-            "configurations": [_format_configuration(c) for c in configurations],
-            "total_count": meta.get("total-count", len(configurations)),
-            "page": page,
-            "page_size": page_size,
-        }
-
-        return json.dumps(result, indent=2)
+        return format_list_output(
+            items=[_format_configuration(c) for c in configurations],
+            entity_type="configuration",
+            list_key="configurations",
+            output_format=output_format,
+            save_to_file=save_to_file,
+            extra_fields={
+                "total_count": meta.get("total-count", len(configurations)),
+                "page": page,
+                "page_size": page_size,
+            },
+        )
 
     @mcp.tool()
     async def get_configuration(configuration_id: int) -> str:
@@ -131,6 +140,8 @@ def register_configuration_tools(mcp: FastMCP, client: ITGlueClient | None = Non
         query: str,
         organization_id: int | None = None,
         limit: int = 10,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """Search for configurations by name or hostname.
 
@@ -138,6 +149,8 @@ def register_configuration_tools(mcp: FastMCP, client: ITGlueClient | None = Non
             query: Search query string (matches name or hostname)
             organization_id: Optional organization ID to limit search
             limit: Maximum number of results (default 10, max 100)
+            output_format: Output format - "full", "compact" (default), or "summary"
+            save_to_file: If True, saves full results to a temp file for jq processing
 
         Returns:
             JSON string with matching configurations
@@ -153,13 +166,14 @@ def register_configuration_tools(mcp: FastMCP, client: ITGlueClient | None = Non
         response = await client.get("/configurations", params)
         configurations = response.get("data", [])
 
-        result = {
-            "query": query,
-            "configurations": [_format_configuration(c) for c in configurations],
-            "count": len(configurations),
-        }
-
-        return json.dumps(result, indent=2)
+        return format_search_output(
+            items=[_format_configuration(c) for c in configurations],
+            entity_type="configuration",
+            list_key="configurations",
+            query=query,
+            output_format=output_format,
+            save_to_file=save_to_file,
+        )
 
     @mcp.tool()
     async def create_configuration(

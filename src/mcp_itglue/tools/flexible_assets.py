@@ -12,6 +12,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ..client import ITGlueClient, get_client
+from .output import format_list_output, format_search_output
 
 
 def _format_flexible_asset_type(fat: dict[str, Any]) -> dict[str, Any]:
@@ -34,11 +35,13 @@ def _format_flexible_asset_field(field: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": field.get("id"),
         "flexible_asset_type_id": attrs.get("flexible-asset-type-id"),
+        "order": attrs.get("order"),
         "name": attrs.get("name"),
+        "name_key": attrs.get("name-key"),  # This is the key to use in traits
         "kind": attrs.get("kind"),
         "hint": attrs.get("hint"),
         "required": attrs.get("required"),
-        "options": attrs.get("options"),
+        "tag_type": attrs.get("tag-type"),  # For Tag fields, what they link to
         "default_value": attrs.get("default-value"),
         "show_in_list": attrs.get("show-in-list"),
         "use_for_title": attrs.get("use-for-title"),
@@ -78,6 +81,8 @@ def register_flexible_asset_tools(mcp: FastMCP, client: ITGlueClient | None = No
         enabled: bool | None = None,
         page: int = 1,
         page_size: int = 50,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """List all flexible asset type definitions (schemas).
 
@@ -88,6 +93,8 @@ def register_flexible_asset_tools(mcp: FastMCP, client: ITGlueClient | None = No
             enabled: Filter by enabled status
             page: Page number (starts at 1)
             page_size: Number of results per page (max 1000)
+            output_format: Output format - "full" (all fields), "compact" (key fields only), or "summary" (counts and IDs only). Default: compact
+            save_to_file: If True, saves full results to a temp file and returns the path for jq processing
 
         Returns:
             JSON string with list of flexible asset types
@@ -104,14 +111,18 @@ def register_flexible_asset_tools(mcp: FastMCP, client: ITGlueClient | None = No
         types = response.get("data", [])
         meta = response.get("meta", {})
 
-        result = {
-            "flexible_asset_types": [_format_flexible_asset_type(t) for t in types],
-            "total_count": meta.get("total-count", len(types)),
-            "page": page,
-            "page_size": page_size,
-        }
-
-        return json.dumps(result, indent=2)
+        return format_list_output(
+            items=[_format_flexible_asset_type(t) for t in types],
+            entity_type="flexible_asset_type",
+            list_key="flexible_asset_types",
+            output_format=output_format,
+            save_to_file=save_to_file,
+            extra_fields={
+                "total_count": meta.get("total-count", len(types)),
+                "page": page,
+                "page_size": page_size,
+            },
+        )
 
     @mcp.tool()
     async def get_flexible_asset_type(type_id: int, include_fields: bool = True) -> str:
@@ -147,38 +158,49 @@ def register_flexible_asset_tools(mcp: FastMCP, client: ITGlueClient | None = No
     @mcp.tool()
     async def list_flexible_asset_fields(
         flexible_asset_type_id: int,
-        page: int = 1,
-        page_size: int = 50,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """List field definitions for a flexible asset type.
 
+        Note: This uses the include mechanism on the flexible asset type endpoint
+        since IT Glue doesn't expose a direct /flexible_asset_fields filter endpoint.
+
         Args:
             flexible_asset_type_id: The flexible asset type ID
-            page: Page number (starts at 1)
-            page_size: Number of results per page (max 1000)
+            output_format: Output format - "full" (all fields), "compact" (key fields only), or "summary" (counts and IDs only). Default: compact
+            save_to_file: If True, saves full results to a temp file and returns the path for jq processing
 
         Returns:
-            JSON string with list of field definitions
+            JSON string with list of field definitions including name_key for trait mapping
         """
-        params: dict[str, Any] = {
-            "filter[flexible_asset_type_id]": flexible_asset_type_id,
-            "page[number]": page,
-            "page[size]": min(page_size, 1000),
-        }
+        # Use include mechanism since /flexible_asset_fields endpoint doesn't support filtering
+        response = await client.get(
+            f"/flexible_asset_types/{flexible_asset_type_id}",
+            {"include": "flexible_asset_fields"}
+        )
+        
+        included = response.get("included", [])
+        fields = [
+            _format_flexible_asset_field(f)
+            for f in included
+            if f.get("type") in ("flexible-asset-fields", "flexible_asset_fields")
+        ]
+        
+        # Sort by order if available
+        fields.sort(key=lambda f: f.get("order", 0) if f.get("order") else 999)
 
-        response = await client.get("/flexible_asset_fields", params)
-        fields = response.get("data", [])
-        meta = response.get("meta", {})
-
-        result = {
-            "flexible_asset_type_id": flexible_asset_type_id,
-            "fields": [_format_flexible_asset_field(f) for f in fields],
-            "total_count": meta.get("total-count", len(fields)),
-            "page": page,
-            "page_size": page_size,
-        }
-
-        return json.dumps(result, indent=2)
+        return format_list_output(
+            items=fields,
+            entity_type="flexible_asset_field",
+            list_key="fields",
+            output_format=output_format,
+            save_to_file=save_to_file,
+            extra_fields={
+                "flexible_asset_type_id": flexible_asset_type_id,
+                "total_count": len(fields),
+            },
+        )
 
     # =========================================================================
     # Flexible Assets (Instances)
@@ -192,6 +214,8 @@ def register_flexible_asset_tools(mcp: FastMCP, client: ITGlueClient | None = No
         archived: bool | None = None,
         page: int = 1,
         page_size: int = 50,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """List flexible asset instances.
 
@@ -202,6 +226,8 @@ def register_flexible_asset_tools(mcp: FastMCP, client: ITGlueClient | None = No
             archived: Filter by archived status
             page: Page number (starts at 1)
             page_size: Number of results per page (max 1000)
+            output_format: Output format - "full" (all fields), "compact" (key fields only), or "summary" (counts and IDs only). Default: compact
+            save_to_file: If True, saves full results to a temp file and returns the path for jq processing
 
         Returns:
             JSON string with list of flexible assets
@@ -224,14 +250,18 @@ def register_flexible_asset_tools(mcp: FastMCP, client: ITGlueClient | None = No
         assets = response.get("data", [])
         meta = response.get("meta", {})
 
-        result = {
-            "flexible_assets": [_format_flexible_asset(a) for a in assets],
-            "total_count": meta.get("total-count", len(assets)),
-            "page": page,
-            "page_size": page_size,
-        }
-
-        return json.dumps(result, indent=2)
+        return format_list_output(
+            items=[_format_flexible_asset(a) for a in assets],
+            entity_type="flexible_asset",
+            list_key="flexible_assets",
+            output_format=output_format,
+            save_to_file=save_to_file,
+            extra_fields={
+                "total_count": meta.get("total-count", len(assets)),
+                "page": page,
+                "page_size": page_size,
+            },
+        )
 
     @mcp.tool()
     async def get_flexible_asset(asset_id: int) -> str:
@@ -254,6 +284,8 @@ def register_flexible_asset_tools(mcp: FastMCP, client: ITGlueClient | None = No
         flexible_asset_type_id: int | None = None,
         organization_id: int | None = None,
         limit: int = 10,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """Search for flexible assets by name.
 
@@ -262,6 +294,8 @@ def register_flexible_asset_tools(mcp: FastMCP, client: ITGlueClient | None = No
             flexible_asset_type_id: Optional type filter
             organization_id: Optional organization filter
             limit: Maximum number of results (default 10, max 100)
+            output_format: Output format - "full", "compact" (default), or "summary"
+            save_to_file: If True, saves full results to a temp file for jq processing
 
         Returns:
             JSON string with matching flexible assets
@@ -279,13 +313,14 @@ def register_flexible_asset_tools(mcp: FastMCP, client: ITGlueClient | None = No
         response = await client.get("/flexible_assets", params)
         assets = response.get("data", [])
 
-        result = {
-            "query": query,
-            "flexible_assets": [_format_flexible_asset(a) for a in assets],
-            "count": len(assets),
-        }
-
-        return json.dumps(result, indent=2)
+        return format_search_output(
+            items=[_format_flexible_asset(a) for a in assets],
+            entity_type="flexible_asset",
+            list_key="flexible_assets",
+            query=query,
+            output_format=output_format,
+            save_to_file=save_to_file,
+        )
 
     @mcp.tool()
     async def create_flexible_asset(
@@ -382,6 +417,8 @@ def register_flexible_asset_tools(mcp: FastMCP, client: ITGlueClient | None = No
         include_archived: bool = False,
         page: int = 1,
         page_size: int = 50,
+        output_format: str = "compact",
+        save_to_file: bool = False,
     ) -> str:
         """Get all flexible assets for an organization.
 
@@ -391,6 +428,8 @@ def register_flexible_asset_tools(mcp: FastMCP, client: ITGlueClient | None = No
             include_archived: Whether to include archived assets
             page: Page number (starts at 1)
             page_size: Number of results per page (max 1000)
+            output_format: Output format - "full" (all fields), "compact" (key fields only), or "summary" (counts and IDs only). Default: compact
+            save_to_file: If True, saves full results to a temp file and returns the path for jq processing
 
         Returns:
             JSON string with the organization's flexible assets
@@ -410,12 +449,16 @@ def register_flexible_asset_tools(mcp: FastMCP, client: ITGlueClient | None = No
         assets = response.get("data", [])
         meta = response.get("meta", {})
 
-        result = {
-            "organization_id": organization_id,
-            "flexible_assets": [_format_flexible_asset(a) for a in assets],
-            "total_count": meta.get("total-count", len(assets)),
-            "page": page,
-            "page_size": page_size,
-        }
-
-        return json.dumps(result, indent=2)
+        return format_list_output(
+            items=[_format_flexible_asset(a) for a in assets],
+            entity_type="flexible_asset",
+            list_key="flexible_assets",
+            output_format=output_format,
+            save_to_file=save_to_file,
+            extra_fields={
+                "organization_id": organization_id,
+                "total_count": meta.get("total-count", len(assets)),
+                "page": page,
+                "page_size": page_size,
+            },
+        )
