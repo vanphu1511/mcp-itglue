@@ -51,7 +51,7 @@ _browser_page: "Page | None" = None
 class ITGlueSession:
     """Represents an authenticated IT Glue session with cookies and XSRF token."""
     
-    tenant_subdomain: str  # e.g., "guidance-technologies-limited"
+    tenant_subdomain: str  # e.g., "your-company-subdomain"
     xsrf_token: str
     cookies: list[dict[str, Any]]  # Playwright cookie format
     captured_at: int  # Unix timestamp
@@ -210,7 +210,7 @@ def get_keep_browser_open() -> bool:
 
 
 async def capture_session_from_browser(
-    itglue_subdomain: str = "guidance-technologies-limited.eu",
+    itglue_subdomain: str = "your-company-subdomain.eu",
     headless: bool = False,
     timeout_seconds: int = 120,
     keep_open: bool | None = None,
@@ -261,7 +261,7 @@ async def capture_session_from_browser(
                 logger.info("Captured XSRF token from request header")
 
             # Capture tenant from URL pattern
-            # e.g., https://guidance-technologies-limited.eu.itglue.com/...
+            # e.g., https://your-company-subdomain.eu.itglue.com/...
             if ".eu.itglue.com" in url and not captured_tenant:
                 match = re.match(r"https://([^.]+)\.eu\.itglue\.com", url)
                 if match and match.group(1) not in ["app", "api", "encyro"]:
@@ -323,7 +323,7 @@ async def capture_session_from_browser(
 
 async def get_session(
     force_refresh: bool = False,
-    itglue_subdomain: str = "guidance-technologies-limited.eu",
+    itglue_subdomain: str = "your-company-subdomain.eu",
     keep_open: bool | None = None,
 ) -> ITGlueSession:
     """

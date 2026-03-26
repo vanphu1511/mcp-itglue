@@ -99,8 +99,8 @@ create_checklist_from_template_jwt(
     "exp": 1769710447,  // 2 hours from issuance
     "iat": 1769703247,
     "itglue": {
-      "account_id": 3531876280484020,
-      "email": "jdeane@iglutech.com"
+      "account_id": 1234567890123456,
+      "email": "user@example.com"
     }
   }
 }

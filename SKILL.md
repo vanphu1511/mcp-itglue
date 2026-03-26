@@ -110,7 +110,7 @@ All other IT Glue operations work with the standard API key authentication:
 
 IT Glue uses a completely different internal API for document content:
 - **Endpoint**: `/{org_id}/docs/{doc_id}/versions/` (not `/documents`)
-- **Domain**: Tenant subdomain (e.g., `guidance-technologies-limited.eu.itglue.com`)
+- **Domain**: Tenant subdomain (e.g., `your-company-subdomain.eu.itglue.com`)
 - **Auth**: Session cookies + XSRF token (not API key or JWT Bearer)
 
 ### To Create/Update Document Content:
