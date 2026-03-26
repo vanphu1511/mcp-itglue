@@ -1,3 +1,7 @@
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+![MCP](https://img.shields.io/badge/MCP-FastMCP-purple)
+
 # MCP IT Glue Server
 
 A comprehensive Model Context Protocol (MCP) server for IT Glue API integration. This server enables AI assistants like Claude to interact with IT Glue's documentation and asset management system.
